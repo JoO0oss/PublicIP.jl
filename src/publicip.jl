@@ -1,7 +1,7 @@
 import Dates
 import Random
 
-# Number of hours between cache refreshes.
+# Minimum number of hours between cache refreshes.
 const CACHE_CYCLE = 12
 const CACHE_LOCATION = joinpath(@__DIR__, "cache")  # Same as "$(pwd())/cache".
 
@@ -235,6 +235,3 @@ A command line tool to get the public IP address of your network.
 end
 
 main()
-
-
-### need to output that source data coming from the cache, and be able to --force none cached ip grabs.
