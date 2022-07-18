@@ -3,14 +3,16 @@ import Random
 
 # Minimum number of hours between cache refreshes.
 const CACHE_CYCLE = 12
+const CONNECTION_EXPIRE = 3  # How long to try to get a connection before just skipping to the next.
 const CACHE_LOCATION = joinpath(@__DIR__, "cache")  # Same as "$(pwd())/cache".
 
-show_error = false
+force_cache = false
+show_debug = false
 force_curl = false
 show_newline = true
 show_source = false
 
-success = 0  # This stores whether the program succeeded, also sed as an exit code.
+exit_state = 0  # This stores whether the program succeeded, also used as an exit code.
 
 "Return ip, date and source from the cache file. This function does not check the data or that the file exists."
 function read_cache()::Tuple{String, Dates.DateTime, String}
@@ -33,7 +35,7 @@ end
 
 "A function that is called when some form of fault is detected in connection information."
 function connection_error()::String
-    return "Connection error."
+    return "connection_error"
 end
 
 "Determines whether a given string is in the form of an IPv4 address."
@@ -107,7 +109,7 @@ SOURCES = Dict(
 
 "Returns the network's public IP address and the server it used to determine it."
 function get_public_ip()::Tuple{String, String}
-    global success
+    global exit_state
     # Try to reduce strain on any one server. Comment out and choose order in SOURCES if more
     # precise behaviour is needed.
     sources_ordered = Random.shuffle([source for source in SOURCES])
@@ -116,25 +118,51 @@ function get_public_ip()::Tuple{String, String}
     # that server.
     for pair in sources_ordered
         source, attempt_func = pair
-        
         try
-            ip_addr = attempt_func()
-            success = 0
+            if show_debug
+                println("Trying source `$(source)`...")
+            end
+            ip_addr = ""
+
+            failed_to_connect = false
+            has_connected = false
+            @async begin
+                ip_addr = attempt_func()
+                if !failed_to_connect
+                    exit_state = 0
+                    has_connected = true
+                end
+            end
+            sleep(CONNECTION_EXPIRE)
+            if !has_connected
+                failed_to_connect = true  # This variable lets the async block know that it should not try to overwrite data.
+                if show_debug
+                    println("Failed to connect to source `$(source)`.")
+                end
+                continue
+            end
             
-            if show_error
+            if show_debug
                 # Just show that the `curl` command worked, not necessarily that the data is valid.
                 println("Recieved data from `$(source)`.")
             end
             return ip_addr, source
         catch err
-            success = -1
+            exit_state = 1
             
-            if show_error
+            if show_debug
                 println("publicip.jl caught the following error when connecting to `$(source)`:")
                 showerror(stdout, err)
             end
         end
     end
+
+    if show_debug
+        println("publicip.jl failed to connect to any of the sources.")
+    end
+
+    exit_state = 1
+    return connection_error(), "127.0.0.1"
 end
 
 "Tries to get cached data where it can, and formats the output according to the command line options."
@@ -161,10 +189,10 @@ function read_ip()::String
     if !is_ip(cached_ip)
         use_cache = false  # if the cached IP is not useable,
     end
-    if Dates.now() - cached_date > Dates.Hour(CACHE_CYCLE)
+    if Dates.now() - cached_date > Dates.Hour(CACHE_CYCLE) && !force_cache
         use_cache = false  # or if the cached IP was last updated too long ago,
     end
-    
+
     if force_curl
         use_cache = false
     end
@@ -172,6 +200,9 @@ function read_ip()::String
     if use_cache
         output = cached_ip
         source = cached_source
+        if show_debug
+            println("Using cached data from `$(source)` ($(cached_date)).")
+        end
     else
         output, source = get_public_ip()  # then generate a new value for the IP address.
         # Only overwrite cache if your new IP address is valid.
@@ -186,39 +217,46 @@ function read_ip()::String
         else
             output = "IP Address: $(output)\nServer used: $(source)\n"
         end
-    elseif show_newline && !show_error
-        # newline options have no effect if source-showing or error-showing options are set true.
+    elseif show_debug || show_newline
         output *= "\n"
     end
-    
+
     return output
 end
 
 function main()
-    global show_error
+    global force_cache
+    global show_debug
     global force_curl
     global show_newline
     global show_source
     
     if "-h" in ARGS || "--help" in ARGS || "--version" in ARGS
         if "--version" in ARGS
-            print("""PublicIP.jl version 1.0.0
+            print("""PublicIP.jl version 1.0.1
 A command line tool to get the public IP address of your network.
 - github link: https://github.com/JoO0oss/PublicIP.jl
 """)
         else
             print("""PublicIP.jl help menu:
--e   --error        to show outputs to help troubleshoot errors.
--f   --force        to force the use of servers instead of cached data.
--h   --help         show this help screen.
+run  \$ publicip  on its own to output your public ip address.
+-c   --cache        use data from cache file if it exists.
+-d   --debug        to show outputs to help troubleshoot errors.
+-f   --force        to force the use of servers instead of cached data (will override -c).
+-h   --help         show this help screen (and suppress main functionality).
+-n   --no-newline   stop the program adding a newline at the end.
 -v   --verbose      show a bit more about where/how the output was produced.
      --version      show version information.
 """)
         end
     else
         if length(ARGS) > 0
-            if "-e" in ARGS || "--error" in ARGS
-                show_error = true
+            if "-c" in ARGS || "--cache" in ARGS
+                force_cache = true
+            end
+            if "-d" in ARGS || "--debug" in ARGS
+                println("Debugging enabled.")
+                show_debug = true
             end
             if "-f" in ARGS || "--force" in ARGS
                 force_curl = true
@@ -235,3 +273,4 @@ A command line tool to get the public IP address of your network.
 end
 
 main()
+exit(exit_state)
