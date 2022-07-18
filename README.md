@@ -1,4 +1,4 @@
-# publicIP.jl
+# PublicIP.jl
 A command line tool to get the public IP address of your network. Made with Julia and bash commands from within the `.jl` Julia program file.
 
 <br>
@@ -9,14 +9,20 @@ Create a new folder in your home directory, for example `~/publicip/`, and copy 
 Thus `publicip` runs the Julia program with the ability to add options and command line arguments as you please.
 
 ## Usage
--e   --error        to show outputs to help troubleshoot errors.
--f   --force        to force the use of servers instead of cached data.
--h   --help         show this help screen.
+run  `~$ publicip`  on its own to output your public ip address.
+
+```
+-c   --cache        use data from cache file if it exists.
+-d   --debug        to show outputs to help troubleshoot errors.
+-f   --force        to force the use of servers instead of cached data (will override -c).
+-h   --help         show help screen (and suppress main functionality).
 -n   --no-newline   stop the program adding a newline at the end.
 -v   --verbose      show a bit more about where/how the output was produced.
      --version      show version information.
+```
+If any arguments are unrecognised, they will be ignored.
 
-Use on its own to simply print the IP address of your network.
+Use of the `publicip` command on its own simply prints the global IP address of your network.
 ```
 ~$ publicip
 123.234.321.1
